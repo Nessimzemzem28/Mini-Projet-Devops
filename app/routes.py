@@ -1,4 +1,3 @@
-from flask import Flask
 from flask import request, render_template, jsonify, g
 
 from app.utils.auth import generate_token, requires_auth, verify_token
@@ -6,6 +5,11 @@ from app.models.models import User, Task
 from app import app
 
 import os
+
+# ensure SQLALCHEMY database URI is taken from environment to avoid SQLite fallback
+_db_uri = os.environ.get('SQLALCHEMY_DATABASE_URI') or os.environ.get('DATABASE_URL')
+if _db_uri:
+    app.config.setdefault('SQLALCHEMY_DATABASE_URI', _db_uri)
 
 
 @app.route('/', methods=['GET'])
