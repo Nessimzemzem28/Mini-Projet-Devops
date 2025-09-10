@@ -66,7 +66,7 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           context: ./app
-          file: my-dockerized-app\app\Dockerfile
+          file: ..\..\my-dockerized-app\app\Dockerfile
           push: true
           tags: |
             ${{ env.BACKEND_IMAGE }}:${{ env.IMAGE_TAG }}
@@ -76,7 +76,7 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           context: ./static
-          file: my-dockerized-app\static\Dockerfile
+          file: ..\..\my-dockerized-app\static\Dockerfile
           push: true
           tags: |
             ${{ env.FRONTEND_IMAGE }}:${{ env.IMAGE_TAG }}
