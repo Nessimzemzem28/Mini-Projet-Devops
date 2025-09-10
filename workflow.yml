@@ -1,0 +1,117 @@
+name: CI / CD
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  IMAGE_TAG: ${{ github.sha }}
+  BACKEND_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/flask-backend
+  FRONTEND_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/react-frontend
+  K8S_MANIFEST_DIR: k8s
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install backend deps
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f app/requirements.txt ]; then pip install -r app/requirements.txt; fi
+
+      - name: Run backend unit tests
+        working-directory: app
+        run: |
+          if command -v pytest >/dev/null 2>&1; then pytest -q || exit 1; else echo "pytest not found, skipping"; fi
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Run frontend unit tests
+        working-directory: static
+        run: |
+          if [ -f static/package.json ]; then npm ci && npm test --if-present; else echo "no frontend package.json, skipping"; fi
+
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v4
+        with:
+          context: ./app
+          file: ./app/Dockerfile
+          push: true
+          tags: |
+            ${{ env.BACKEND_IMAGE }}:${{ env.IMAGE_TAG }}
+            ${{ env.BACKEND_IMAGE }}:latest
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v4
+        with:
+          context: ./static
+          file: ./static/Dockerfile
+          push: true
+          tags: |
+            ${{ env.FRONTEND_IMAGE }}:${{ env.IMAGE_TAG }}
+            ${{ env.FRONTEND_IMAGE }}:latest
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: '1.29.0'
+
+      - name: Configure kubeconfig
+        env:
+          KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+        run: |
+          mkdir -p $HOME/.kube
+          echo "$KUBE_CONFIG_DATA" | base64 --decode > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+
+      - name: Apply manifests
+        run: |
+          kubectl apply -f ${{ env.K8S_MANIFEST_DIR }}
+
+      - name: Update backend image in cluster
+        run: |
+          kubectl set image deployment/backend backend=${{ env.BACKEND_IMAGE }}:${{ env.IMAGE_TAG }} --record || \
+          kubectl rollout restart deployment/backend || true
+
+      - name: Update frontend image in cluster
+        run: |
+          kubectl set image deployment/frontend frontend=${{ env.FRONTEND_IMAGE }}:${{ env.IMAGE_TAG }} --record || \
+          kubectl rollout restart deployment/frontend
