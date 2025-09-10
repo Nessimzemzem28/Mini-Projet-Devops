@@ -1,4 +1,4 @@
-name: CI / CD
+name: CI/CD
 
 on:
   push:
@@ -26,10 +26,10 @@ jobs:
       - name: Install backend deps
         run: |
           python -m pip install --upgrade pip
-          if [ -f app/requirements.txt ]; then pip install -r app/requirements.txt; fi
+          if [ -f my-dockerized-app/app/requirements.txt ]; then pip install -r my-dockerized-app/app/requirements.txt; fi
 
       - name: Run backend unit tests
-        working-directory: app
+        working-directory: my-dockerized-app/app
         run: |
           if command -v pytest >/dev/null 2>&1; then pytest -q || exit 1; else echo "pytest not found, skipping"; fi
 
@@ -39,9 +39,9 @@ jobs:
           node-version: '18'
 
       - name: Run frontend unit tests
-        working-directory: static
+        working-directory: my-dockerized-app/static
         run: |
-          if [ -f static/package.json ]; then npm ci && npm test --if-present; else echo "no frontend package.json, skipping"; fi
+          if [ -f package.json ]; then npm ci && npm test --if-present; else echo "no frontend package.json, skipping"; fi
 
   build-and-push:
     needs: test
@@ -65,8 +65,8 @@ jobs:
       - name: Build and push backend image
         uses: docker/build-push-action@v4
         with:
-          context: ./app
-          file: ..\..\my-dockerized-app\app\Dockerfile
+          context: ./my-dockerized-app/app
+          file: ./my-dockerized-app/app/Dockerfile
           push: true
           tags: |
             ${{ env.BACKEND_IMAGE }}:${{ env.IMAGE_TAG }}
@@ -75,8 +75,8 @@ jobs:
       - name: Build and push frontend image
         uses: docker/build-push-action@v4
         with:
-          context: ./static
-          file: ..\..\my-dockerized-app\static\Dockerfile
+          context: ./my-dockerized-app/static
+          file: ./my-dockerized-app/static/Dockerfile
           push: true
           tags: |
             ${{ env.FRONTEND_IMAGE }}:${{ env.IMAGE_TAG }}
